@@ -10,7 +10,7 @@ typedef void *(*thread_func_t)(void *);
     #include "chan.c"
 #endif
 
-#define mutext_counter 4
+#define MUTEX_COUNTER 2
 
 enum {
     MSG_MAX = 100000,
@@ -27,7 +27,7 @@ static pthread_t reader_tids[THREAD_MAX], writer_tids[THREAD_MAX];
 struct thread_arg reader_args[THREAD_MAX], writer_args[THREAD_MAX];
 static _Atomic size_t msg_total, msg_count[MSG_MAX];
 
-static pthread_mutex_t mutex[mutext_counter];
+static pthread_mutex_t mutex[MUTEX_COUNTER];
 static _Atomic time_t sender_seconds[MSG_MAX];
 static _Atomic long sender_nano[MSG_MAX];
 static _Atomic time_t reader_seconds[MSG_MAX];
@@ -44,10 +44,8 @@ static void *writer(void *arg)
         
         pthread_mutex_lock(&mutex[0]);
         atomic_store_explicit(&sender_seconds[i], tmp.tv_sec, memory_order_relaxed);
-        pthread_mutex_unlock(&mutex[0]);
-        pthread_mutex_lock(&mutex[1]);
         atomic_store_explicit(&sender_nano[i], tmp.tv_nsec, memory_order_relaxed);
-        pthread_mutex_unlock(&mutex[1]);
+        pthread_mutex_unlock(&mutex[0]);
     }
     return 0;
 }
@@ -62,12 +60,10 @@ static void *reader(void *arg)
         clock_gettime(CLOCK_MONOTONIC, &tmp);
         if (chan_recv(a->ch, (void **) &msg) == -1) break;
 
-        pthread_mutex_lock(&mutex[2]);
+        pthread_mutex_lock(&mutex[1]);
         atomic_store_explicit(&reader_seconds[msg], tmp.tv_sec, memory_order_relaxed);
-        pthread_mutex_unlock(&mutex[2]);
-        pthread_mutex_lock(&mutex[3]);
         atomic_store_explicit(&reader_nano[msg], tmp.tv_nsec, memory_order_relaxed);
-        pthread_mutex_unlock(&mutex[3]);
+        pthread_mutex_unlock(&mutex[1]);
 
         atomic_fetch_add_explicit(&msg_count[msg], 1, memory_order_relaxed);
 
@@ -161,12 +157,15 @@ static void test_chan(const size_t repeat,
         memset(sender_nano, 0, sizeof(long) * msg_total);
         memset(reader_seconds, 0, sizeof(time_t) * msg_total);
         memset(reader_nano, 0, sizeof(long) * msg_total);
-        create_threads(n_readers, reader_fn, reader_args, reader_tids, ch);
         create_threads(n_writers, writer_fn, writer_args, writer_tids, ch);
+        create_threads(n_readers, reader_fn, reader_args, reader_tids, ch);
         join_threads(n_readers, reader_tids);
         join_threads(n_writers, writer_tids);
 
-        for (size_t i = 0; i < msg_total; i++) assert(msg_count[i] == 1);
+        for (size_t i = 0; i < msg_total; i++) {
+            // printf("msg count %d\n", msg_count[i]);
+            assert(msg_count[i] == 1);
+        }
 
         FILE *fp = NULL;
         fp = fopen("unbuffer.txt", "w");
@@ -180,13 +179,13 @@ static void test_chan(const size_t repeat,
 }
 
 void init_mutex() {
-    for (int i = 0; i < mutext_counter; i++) {
+    for (int i = 0; i < MUTEX_COUNTER; i++) {
         pthread_mutex_init(&mutex[i], 0);
     }
 }
 
 void clear_mutex() {
-    for (int i = 0; i < mutext_counter; i++) {
+    for (int i = 0; i < MUTEX_COUNTER; i++) {
         pthread_mutex_destroy(&mutex[i]);
     }
 }
@@ -196,7 +195,7 @@ int main()
     init_mutex();
 
     // repeat, buffer size, msg size, reader count, reader function, writer count, writer function
-    test_chan(100, 0, 5000, 100, reader, 1, writer);
+    test_chan(100, 0, 5000, 1, reader, 1, writer);
     // test_chan(100, 7, 5000, 100, reader, 100, writer);
 
     clear_mutex();

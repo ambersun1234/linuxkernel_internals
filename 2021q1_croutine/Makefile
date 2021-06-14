@@ -1,5 +1,5 @@
 croutine: main.c futex.c chan.c
-	gcc -pthread $< -o $@
+	gcc -ggdb -pthread -fPIE -pie -fsanitize=thread $< -o $@
 
 .PHONY: clean
 

@@ -218,7 +218,9 @@ static int chan_send_unbuf(struct chan *ch, void *data)
     if (!atomic_compare_exchange_strong_explicit(&ch->datap, &ptr, &data,
                                                  memory_order_acq_rel,
                                                  memory_order_acquire)) {
-        *ptr = data;
+        // *ptr = data
+        // atomic_compare_exchange_strong(&ptr, &ch->datap, &data);
+        atomic_exchange(&(*ptr), data);
         atomic_store_explicit(&ch->datap, NULL, memory_order_release);
 
         if (atomic_fetch_sub_explicit(&ch->recv_ftx, 1, memory_order_acquire) ==
@@ -261,7 +263,9 @@ static int chan_recv_unbuf(struct chan *ch, void **data)
     if (!atomic_compare_exchange_strong_explicit(&ch->datap, &ptr, data,
                                                  memory_order_acq_rel,
                                                  memory_order_acquire)) {
-        *data = *ptr;
+        // *data = *ptr;
+        // atomic_compare_exchange_strong_explicit(&ptr, &ch->datap, data, memory_order_acq_rel, memory_order_acquire);
+        atomic_exchange(data, *ptr);
         atomic_store_explicit(&ch->datap, NULL, memory_order_release);
 
         if (atomic_fetch_sub_explicit(&ch->send_ftx, 1, memory_order_acquire) ==
